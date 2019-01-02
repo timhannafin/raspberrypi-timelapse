@@ -1,0 +1,318 @@
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml">
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+<title>Time Lapse Control Panel</title>
+<style>
+.hidden-options{
+	overflow:hidden;
+	height:0px;
+}
+#projects-menu{
+	border-right:1px solid #333;
+}
+
+#project-list>li.project-list-item{
+	display:block;
+	min-height:20px;
+	vertical-align:middle;
+	cursor:pointer;
+}
+
+#project-list>li.project-list-item:hover, #project-list>li.project-list-item.active{
+	background-color:#0CF;	
+}
+</style>
+<script src="https://ajax.googleapis.com/ajax/libs/jquery/3.3.1/jquery.min.js"></script>
+
+<!-- Bootstrap Stuff -->
+<link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.7/css/bootstrap.min.css" integrity="sha384-BVYiiSIFeK1dGmJRAkycuHAHRg32OmUcww7on3RYdg4Va+PmSTsz/K68vbdEjh4u" crossorigin="anonymous">
+<link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.7/css/bootstrap-theme.min.css" integrity="sha384-rHyoN1iRsVXV4nD0JutlnGaslCJuC7uwjduW9SVrLvRYooPp2bWYgmgJQIXwl/Sp" crossorigin="anonymous">
+
+<script src="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.7/js/bootstrap.min.js" integrity="sha384-Tc5IQib027qvyjSMfHjOMaLkfuWVxZxUPnCJA7l2mCWNIpG9mGCD8wGNIcPD7Txa" crossorigin="anonymous"></script>
+
+
+
+<script type="text/javascript">
+
+var preview_timer;
+var famecount_timer;
+
+function updatePreview(){
+	$("img#preview").attr("src", "/preview?" + new Date().getTime());
+}
+
+function updateFrameCount(){
+	$.ajax("/status",{
+		   dataType:"json",
+		   success:function(data){
+				$("span#frame-count").html(data.frames);
+		   }
+	});
+}
+
+function startPreview(){
+	preview_timer  = setInterval(updatePreview, 1000);	
+	$("img#preview").attr("src", "");
+}
+
+function stopPreview(){
+	clearInterval(preview_timer);
+}
+
+function startCapture(){
+	$.get("/start");
+}
+
+function stopCapture(){
+	$.get("/stop");
+}
+
+function inveralChange(){
+	$.get("/set-interval?interval=" + $("input#capture-rate").val() );
+}
+
+function getInterval(){
+	$.ajax("/get-interval",{
+		   success:function(data){
+				$("input#capture-rate").val(data.captureInterval);
+		   }		   
+	});
+}
+
+function clearFrames(){
+	
+}
+
+function displayProject(data){
+	$("#active-project").val(data.id);
+	$("#txt-capture-interval").val(data.capture_interval);
+	$("#txt-project-name").val(data.name);
+	$("#frame-count").html(data.frame_count);
+	if(data.frame_count > 0){
+		$("#last-frame-time").html(data.last_capture);
+	}
+		
+	$("#txt-start-frame").val(data.render_start_frame);
+	$("#txt-end-frame").val(data.render_end_frame);
+	$("#txt-frame-rate").val(data.render_frame_rate);
+	$("#sel-codec").val(data.render_codec);
+	$("#project-size").html(data.project_size);
+}
+
+function loadProject(target){
+	$("#project-list>li.project-list-item.active").removeClass("active");
+	$("#project-list>li.project-list-item[projectid='" + target + "']").addClass("active");
+	
+	$.ajax("get-project",{
+		method:"GET",
+		data:{id:target},
+		success:function(data){
+			displayProject(data);
+		}
+		   
+	});
+}
+
+function toggleAdvancedOptions(){
+	$("#advanced-render-options").css({display:"block"});
+	$("#advanced-render-options").animate({height:"75px"});
+	
+}
+
+function startStopClick(){
+	var path = "";
+	if( $("#btn-start-stop").val() == "Start Capture"){
+		path = "start";
+		$("#btn-start-stop").val("Stop Capture");
+	}else{
+		path = "stop";
+		$("#btn-start-stop").val("Start Capture");		
+	}
+	
+	$.ajax(path,{
+		method:"GET",
+		data:{id: $("#active-project").val() },
+		success:function(data){
+			displayProject(data);
+		}
+		   
+	});		
+}
+
+function deleteFrames(){
+	if(confirm("Are you sure you want to delete all captured frames?")){
+		$.ajax("delete-frames",{
+			method:"GET",
+			data:{id: $("#active-project").val() },
+			success:function(data){
+				displayProject(data);
+			}
+			   
+		});
+	}
+}
+
+function previewButtonClick(){
+	if( $("#btn-preview").val() == "Start Preview" ){
+		startPreview();
+		$("#btn-preview").val("Stop Preview");
+	}else{
+		stopPreview();
+		$("#btn-preview").val("Start Preview");
+	}
+}
+
+function saveProject(){
+	$.ajax("save",{
+		method:"GET",
+		dataType:"json",
+		data:{id: $("#active-project").val(), name:$("#txt-project-name").val(), interval:$("#txt-capture-interval").val()},
+		success: function(data){
+			addProjectItem(data.id, data.name).click();
+		}
+	});
+}
+
+function addProjectItem(id, name){
+	var li = $("<li>").addClass("project-list-item");
+	li.attr("projectId", id);
+	li.html(name);
+	
+	li.appendTo("#project-list");
+	
+	li.click(function(){												   
+				loadProject($(this).attr("projectid"));						   
+	});	
+	
+	return li;
+}
+
+$(document).ready(function(){
+	$.ajax("list-projects",{
+		method:"GET",
+		dataType:"json",
+		success: function(data){
+			if(data.length > 0){
+				$("#project-list").html("");	
+			}
+			
+			for(var i in data){
+				addProjectItem(data[i].id, data[i].name);
+			}
+		}
+	});
+	
+	$("#advanced-options-toggle").click(function(){
+		toggleAdvancedOptions();									 
+	});
+	
+	$("#btn-start-stop").click(function(){
+		startStopClick();									
+	});
+	
+	$("#btn-delete-frames").click(function(){
+		deleteFrames();				   
+	});
+	
+	$("#btn-save-project").click(function(){
+		saveProject();								  
+	});
+	
+	$("input#btn-preview").click(function(){previewButtonClick()});
+});
+/*
+$(document).ready(function(){
+	$("input#start-preview").click(function(){startPreview()});
+	
+	$("input#stop-preview").click(function(){stopPreview()});
+	
+	$("input#start-capture").click(function(){startCapture()});
+
+	$("input#stop-capture").click(function(){stopCapture()});
+	
+	$("input#clear-frames").click(function(){clearFrames()});
+	
+	$("input#capture-rate").change(function(){inveralChange()});
+
+	getInterval();
+	updateFrameCount();
+});
+*/
+
+</script>
+</head>
+
+<body>
+
+<div id="page-container" class="container-fluid">
+	<div id="main-row" class="row row-eq-height">
+    	<div id="projects-menu" class="col-md-2">
+        	<h2>Projects</h2>
+            <input type="button" id="btn-new-projet" value="Create New"/>
+            
+            <div id="project-list">
+            	No projects found
+            </div>
+        </div>
+        <div class="col-md-1">
+        </div>
+        <div id="projects-menu" class="col-md-9">
+        	<div id="control-panel-container" class="container-fluid">
+            	<div id="preview-row" class="row">
+                	<div class="col-md-12">
+        				<img id="preview" src="" height="384" width="512" /> <input type="button" id="btn-preview" value = "Start Preview"/>
+                    </div>
+                </div>
+                <div id="project-name-row" class="row">
+                	<div class="col-md-12">
+                    	<input type="hidden" name="active-project" id="active-project" value="0" />
+                		<label for="txt-project-name">Project Name:</label> <input type="text" name="txt-project-name" id="txt-project-name" value="New Project"/> <input type="button" value="Save" id="btn-save-project" />
+                	</div>
+                </div>            
+                <div id="project-name-row" class="row">
+                	<div class="col-md-12">
+                    	<label for="txt-capture-interval">Frame Capture Rate:</label> One frame every <input type="number" name="txt-capture-interval" id="txt-capture-interval" value="1"/> seconds
+                    </div>                
+                </div>
+                
+                <div id="project-start-stop-row" class="row">
+                	<div class="col-md-12">
+                		<input type="button" value="Start Capture" id="btn-start-stop" />
+                	</div>
+                </div>    
+                
+                                
+                <div id="project-status-row" class="row">
+                	<div id="project-status" class="col-md-12">
+						<h3>Project Status:</h3>
+                        <p>Captured <span id="frame-count">0</span> frames so far <input type="button" value="Delete All Frames" id="btn-delete-frames"/></p>
+                        <p>Last frame captured at <span id="last-frame-time">00:00:00 0000-00-00</span></p>
+                        <p>Project Size: <span id="project-size">0MB</span></p>
+                        <p>Device Storage: <span id="used-device-storage">0MB</span> of <span id="total-device-storage">0</span>MB used (<span id="precent-device-storage">0</span>%)
+                    </div>                
+                </div>
+                
+                <div id="project-render-row" class="row">
+                	<div id="project-status" class="col-md-12">
+                		<input type="button" value="Render Video" id="btn-render-video"/> <span id="advanced-options-toggle">Show Advanced Options...</span>
+                        <div id="advanced-render-options" class="hidden-options">
+                        	<label for="txt-start-frame">Start Frame:</label> <input type="number" value="0" name="txt-start-frame" id="txt-start-frame" />
+                        	<label for="txt-end-frame">End Frame:</label> <input type="number" value="0" name="txt-end-frame" id="txt-end-frame" />
+
+                        	<label for="txt-frame-rate">Frame Rate:</label> <input type="number" value="30" name="txt-frame-rate" id="txt-frame-rate" />
+                            <label for="sel-codec">Codec:</label> <select name="sel-codec"> <option>mp4</option> </select>
+                        </div>
+                    </div>
+                </div>
+                
+                           
+            </div>
+        </div>
+        
+    </div>
+</div>
+
+</body>
+</div>
+</html>
